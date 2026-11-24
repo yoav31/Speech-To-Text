@@ -13,17 +13,23 @@ from deep_translator import GoogleTranslator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+NLTK_DATA_DIR = "/usr/local/share/nltk_data"
+
 def ensure_nltk_data() -> None:
+    if NLTK_DATA_DIR not in nltk.data.path:
+        nltk.data.path.insert(0, NLTK_DATA_DIR)
+
     resources = [
+        ("tokenizers/punkt", "punkt"),
         ("tokenizers/punkt_tab", "punkt_tab"),
         ("corpora/stopwords", "stopwords"),
     ]
     for resource_path, package_name in resources:
         try:
             nltk.data.find(resource_path)
-        except LookupError:
+        except (LookupError, OSError):
             logger.info("Downloading NLTK resource: %s", package_name)
-            nltk.download(package_name, quiet=True)
+            nltk.download(package_name, download_dir=NLTK_DATA_DIR, quiet=True)
 
 
 def has_intel_gpu() -> bool:
