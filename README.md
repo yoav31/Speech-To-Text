@@ -7,55 +7,63 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Frontend-React.js-blue" alt="React">
   <img src="https://img.shields.io/badge/Backend-Python_Flask-green" alt="Flask">
-  <img src="https://img.shields.io/badge/Database-MySQL-orange" alt="MySQL">
-  <img src="https://img.shields.io/badge/AI-Faster--Whisper-lightgrey" alt="Whisper">
+  <img src="https://img.shields.io/badge/Database-PostgreSQL-336791" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/AI-Faster--Whisper_&_OpenVINO-lightgrey" alt="Whisper">
+  <img src="https://img.shields.io/badge/Container-Docker-2496ED" alt="Docker">
 </p>
 
 ---
 
 ## 📖 Overview
 
-**Motivation:** 
+**Motivation:**
 Personal testimonies of soldiers from World War II are an invaluable historical source. However, many are in old formats, spoken in various languages, and remain inaccessible to the general public. In the digital age, preserving this heritage and making it accessible to diverse audiences is of immense importance.
 
-**Goal:** 
-Develop an end-to-end system for the **Jewish World War II Museum** to transcribe and summarize historical testimonies into various languages, facilitating deeper understanding and historical research.
+**Goal:**
+Develop an end-to-end containerized system for the **Jewish World War II Museum** to transcribe, translate, and summarize historical testimonies into multiple languages, facilitating deeper understanding and historical research.
 
 ## ✨ Features
 
-- **Video Uploads:** Secure platform for users to upload testimony videos.
-- **AI Transcription:** Highly accurate speech-to-text conversion using `Faster-Whisper`.
-- **Smart Summarization:** Generates concise summaries of testimonies using `NLTK`.
-- **Multilingual Support:** Transcripts and summaries are accessible in **Hebrew, English, and Russian** via Google Translator API.
-- **Advanced Search:** Perform keyword searches within video summaries and titles to easily locate relevant historical accounts.
-- **Secure Access:** Token-based authentication ensures data privacy and controlled access.
+- **Audio & Video Uploads:** Upload audio and video testimony files with automatic conversion/extraction (`FFmpeg`, `moviepy`, `pydub`).
+- **AI Transcription with Hardware Acceleration:** Speech-to-text conversion powered by `Faster-Whisper` with configurable hardware selection (`auto`, `intel` via OpenVINO GenAI, `cuda`, or `cpu` fallback with `int8`).
+- **Smart Summarization:** Generates extractive summaries of testimonies using `NLTK`.
+- **Multilingual Support:** Transcripts and summaries are accessible in **Hebrew, English, and Russian** via Google Translator (`deep-translator`).
+- **Keyword Search:** Search across video names, transcripts, and summaries in PostgreSQL to locate relevant testimonies.
+- **Docker-First Deployment:** Full multi-container setup (`db`, `backend`, `frontend`) managed via Docker Compose and environment variables.
 
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **React.js & Material-UI:** For a responsive, accessible, and clean user interface.
+- **React.js & Nginx:** Built into static assets and served via Nginx inside Docker.
 
 ### Backend
-- **Python Flask:** RESTful API server with modular endpoints for transcription, summarization, translation, and search.
-- **AI & NLP capabilities:** 
-  - `Faster-Whisper` (Speech-to-Text)
-  - `NLTK` (Natural Language Toolkit for summarization)
-  - `Google Translator` (Multilingual translation)
+- **Python Flask:** RESTful API server (`/upload`, `/transcribe`, `/summarize`, `/search`, `/videos`, `/delete`) with structured `logging`.
+- **Media & AI / NLP:**
+  - `Faster-Whisper` & `OpenVINO` (`openvino` / `openvino-genai` when enabled)
+  - `NLTK` (`punkt_tab`, `stopwords`)
+  - `deep-translator`
+  - `FFmpeg`, `moviepy`, `pydub`
 
-### Database
-- **MySQL:** Relational database for storing user data, metadata, transcripts, and summaries.
+### Database & Infrastructure
+- **PostgreSQL:** Relational database (`psycopg2-binary`) with persistent Docker volume storage.
+- **Docker & Docker Compose:** Containerized orchestration for database, backend API, and frontend web app.
 
 ## ⚙️ System Architecture
 
-The platform follows a modular client-server architecture:
-1. **Client (JS/React):** User interface for video uploads, semantic search, and reading testimonies.
-2. **HTTP Connection:** RESTful API communication between client and server.
-3. **Server (Python/Flask):** Handles core logic including:
-   - Transcription processing
-   - Text summarization
-   - Data mining & translation
-   - Search engine querying
-4. **Database (MySQL):** Persistent storage.
+The platform runs as containerized services orchestrated with Docker Compose:
+
+1. **Frontend (`my-app` / Nginx):** Web interface for uploading media files, viewing/translating/summarizing transcripts, and searching testimonies.
+2. **Backend (`Flask`):** Handles file ingestion, audio extraction/conversion, Whisper transcription, translation, summarization, and API routes.
+3. **Database (`PostgreSQL`):** Stores testimony metadata, source language, transcripts, and summaries per language.
+4. **Volumes:** Persistent storage for PostgreSQL data (`pgdata`), uploaded files (`uploads/`), and model cache/OpenVINO models.
+
+## 🚀 Running with Docker
+
+1. Create a local `.env` file from `.env.example` and set `POSTGRES_PASSWORD` along with your Whisper/hardware settings (`WHISPER_DEVICE_PREFERENCE`, `WHISPER_MODEL_SIZE`, `OPENVINO_WHISPER_DIR`).
+2. Build and start all services:
+   ```bash
+   docker compose up --build -d
+   ```
 
 ## 👥 Team & Acknowledgments
 
@@ -65,4 +73,4 @@ This project was developed and presented at **SCE Tech Fest 25** (Innovation Sus
 - **Academic Advisors:** Mr. Idan Tubis, Prof. Shlomo Grinberg
 
 ---
-<p align="center"><i>Ensuring valuable historical records remain accessible for future generations.</i></p>
+<p align="center"><i>Ensuring valuable historical records remain accessible for future generations.</i></p>  
