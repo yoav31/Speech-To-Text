@@ -2,10 +2,9 @@
 
 import logging
 import os
+import subprocess
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from moviepy import VideoFileClip
-from pydub import AudioSegment
 from werkzeug.utils import secure_filename
 from db import (
     add_new_video,
@@ -47,26 +46,46 @@ ALLOWED_LANGUAGES = {"en", "he", "ru"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi"}
 
 
+def _has_audio_stream(media_path: str) -> bool:
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "a:0",
+        "-show_entries", "stream=index",
+        "-of", "csv=p=0",
+        media_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return bool(result.stdout.strip())
+
+
+def _render_wav_16k_mono(source_path: str, output_wav_path: str) -> None:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", source_path,
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        output_wav_path,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "ffmpeg conversion failed")
+
+
 def extract_audio_from_video(video_path: str) -> str:
+    if not _has_audio_stream(video_path):
+        raise ValueError("Video file does not contain an audio track")
     audio_path = os.path.splitext(video_path)[0] + ".wav"
-    with VideoFileClip(video_path) as clip:
-        if clip.audio is None:
-            raise ValueError("Video file does not contain an audio track")
-        clip.audio.write_audiofile(
-            audio_path,
-            fps=16000,
-            nbytes=2,
-            codec="pcm_s16le",
-            logger=None,
-        )
+    _render_wav_16k_mono(video_path, audio_path)
     return audio_path
 
 
 def convert_to_wav(source_path: str) -> str:
     output_path = os.path.splitext(source_path)[0] + ".wav"
-    audio = AudioSegment.from_file(source_path)
-    audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
-    audio.export(output_path, format="wav")
+    _render_wav_16k_mono(source_path, output_path)
     return output_path
 
 
