@@ -1,4 +1,17 @@
-export const handleUpload = async (file, language_input, setLoading, Set_Show_Language_Transcription_Button, Set_Show_Language_Summary_Button) => {
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
+const getBaseFileName = (fileName = "") => {
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+};
+
+export const handleUpload = async (
+  file,
+  language_input,
+  setLoading,
+  Set_Show_Language_Transcription_Button,
+  Set_Show_Language_Summary_Button
+) => {
   if (!file) {
     alert("Please select a file first.");
     return;
@@ -10,7 +23,7 @@ export const handleUpload = async (file, language_input, setLoading, Set_Show_La
   formData.append("language", language_input);
 
   try {
-    const response = await fetch("http://localhost:5000/upload", {
+    const response = await fetch(`${API_BASE_URL}/upload`, {
       method: "POST",
       body: formData,
     });
@@ -20,29 +33,61 @@ export const handleUpload = async (file, language_input, setLoading, Set_Show_La
     }
 
     const data = await response.json();
-        alert(data.message);
-        setLoading(false);
-        Set_Show_Language_Transcription_Button(true);
-        Set_Show_Language_Summary_Button(true);
+    alert(data.message);
+    Set_Show_Language_Transcription_Button(true);
+    Set_Show_Language_Summary_Button(true);
   } catch (error) {
     alert("Error uploading file: " + error);
+  } finally {
     setLoading(false);
   }
 };
 
-export const transcribe = async (file, language_transcription, setLoadingTranscription, Set_Show_Download_Transcription_Buttons) => {
+export const transcribe = async (
+  file,
+  language_transcription,
+  setLoadingTranscription,
+  Set_Show_Download_Transcription_Buttons
+) => {
   setLoadingTranscription(true);
-  const baseFileName = file.name.substring(0, file.name.lastIndexOf('.'));
-  
+  const baseFileName = getBaseFileName(file?.name);
+
   console.log("API transcribe called with:", {
-    baseFileName: baseFileName,
-    language_transcription: language_transcription
+    baseFileName,
+    language_transcription,
   });
 
   try {
-    const url = `http://localhost:5000/transcribe?video_name=${encodeURIComponent(baseFileName)}&language=${language_transcription}`;
+    const url = `${API_BASE_URL}/transcribe?video_name=${encodeURIComponent(baseFileName)}&language=${encodeURIComponent(language_transcription)}`;
     console.log("Transcribe URL:", url);
-    
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    Set_Show_Download_Transcription_Buttons(true);
+    return data.result || "";
+  } catch (error) {
+    alert("Error during transcription: " + error);
+    return "";
+  } finally {
+    setLoadingTranscription(false);
+  }
+};
+
+export const summarize = async (
+  file,
+  language_summary,
+  setLoadingSummary,
+  Set_Show_Download_Summary_Buttons
+) => {
+  setLoadingSummary(true);
+  const baseFileName = getBaseFileName(file?.name);
+
+  try {
+    const url = `${API_BASE_URL}/summarize?video_name=${encodeURIComponent(baseFileName)}&language=${encodeURIComponent(language_summary)}`;
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -50,42 +95,21 @@ export const transcribe = async (file, language_transcription, setLoadingTranscr
     }
 
     const data = await response.json();
-    setLoadingTranscription(false);
-    Set_Show_Download_Transcription_Buttons(true);
-    return data.result || '';
-  } catch (error) {
-    alert("Error during transcription: " + error);
-    setLoadingTranscription(false);
-    return '';
-  }
-};
-
-export const summarize = async (file, language_summary, setLoadingSummary, Set_Show_Download_Summary_Buttons) => {
-  setLoadingSummary(true);
-  const baseFileName = file.name.substring(0, file.name.lastIndexOf('.'));
-  try {
-    const response = await fetch(
-      `http://localhost:5000/summarize?video_name=${encodeURIComponent(baseFileName)}&language=${language_summary}`
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    setLoadingSummary(false);
-    Set_Show_Download_Summary_Buttons(true);  
-    return data.result || '';
+    Set_Show_Download_Summary_Buttons(true);
+    return data.result || "";
   } catch (error) {
     alert("Error during summary: " + error);
+    return "";
+  } finally {
     setLoadingSummary(false);
-    return '';
   }
 };
 
 export const handleSearch = async (keywords) => {
   try {
-    const response = await fetch(`http://localhost:5000/search?keywords=${encodeURIComponent(keywords)}`);
+    const response = await fetch(
+      `${API_BASE_URL}/search?keywords=${encodeURIComponent(keywords)}`
+    );
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -100,7 +124,7 @@ export const handleSearch = async (keywords) => {
 
 export const getAllVideos = async () => {
   try {
-    const response = await fetch('http://localhost:5000/videos');
+    const response = await fetch(`${API_BASE_URL}/videos`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -113,30 +137,34 @@ export const getAllVideos = async () => {
   }
 };
 
-export const SummarizeForSearch = async (videoName, language = 'en') => {
+export const SummarizeForSearch = async (videoName, language = "en") => {
   try {
-    const response = await fetch(`http://localhost:5000/summarize?video_name=${encodeURIComponent(videoName)}&language=${language}`);
+    const response = await fetch(
+      `${API_BASE_URL}/summarize?video_name=${encodeURIComponent(videoName)}&language=${encodeURIComponent(language)}`
+    );
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const data = await response.json();
-    return data.result || '';
+    return data.result || "";
   } catch (error) {
-    console.error('Error fetching summary:', error);
-    return '';
+    console.error("Error fetching summary:", error);
+    return "";
   }
 };
 
-export const TranscribeForSearch = async (videoName, language = 'en') => {
+export const TranscribeForSearch = async (videoName, language = "en") => {
   try {
-    const response = await fetch(`http://localhost:5000/transcribe?video_name=${encodeURIComponent(videoName)}&language=${language}`);
+    const response = await fetch(
+      `${API_BASE_URL}/transcribe?video_name=${encodeURIComponent(videoName)}&language=${encodeURIComponent(language)}`
+    );
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const data = await response.json();
-    return data.result || '';
+    return data.result || "";
   } catch (error) {
-    console.error('Error fetching transcription:', error);
-    return '';
+    console.error("Error fetching transcription:", error);
+    return "";
   }
 };
