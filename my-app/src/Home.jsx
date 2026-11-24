@@ -43,7 +43,7 @@ function Home() {
         <div className="logo-header">
           <img src="/photos/sce_logo.webp" alt="sce logo" className="sce_logo" />
           <img src="/photos/museum_logo.png" alt="museum logo" className="museum_logo" />
-          <img src="/photos/logo-text.png" alt="logo text" className="logo_text" />
+          <img src="/museum-logo-text.jpg" alt="logo text" className="logo_text" />
         </div>
         
         <Typography variant='h4' className="historical-title" style={{textAlign: 'center'}}>
