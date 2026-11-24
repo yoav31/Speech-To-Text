@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Route, Routes, Link, useNavigate, useLocation 
 import Home from './Home';
 import About from './About';  
 import FAQ from './FAQ'; 
-import Upload from './Upload';  // דף העלאת קובץ
+import Upload from './Upload';  
 import Search from './Search';
 
 // Search Form Component (needs to be inside Router context)
