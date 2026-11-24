@@ -1,6 +1,6 @@
 import React from 'react';
-import './About.css'; // ייבוא קובץ CSS לדף אודות
-import { Typography } from '@mui/material'; // ייבוא רכיבי Typography מ-MUI
+import './About.css'; 
+import { Typography } from '@mui/material'; 
 
 function About() {
     return (
