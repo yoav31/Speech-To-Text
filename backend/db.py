@@ -1,204 +1,191 @@
 # db.py
 
-import os
 import logging
-import mysql.connector
-from mysql.connector import errorcode
+import os
+import psycopg2
 
 logger = logging.getLogger(__name__)
 
-DB_CONFIG = {
-    'host': os.getenv('MYSQL_HOST', 'localhost'),
-    'port': int(os.getenv('MYSQL_PORT', 3306)),
-    'user': os.getenv('MYSQL_USER', 'root'),
-    'password': os.getenv('MYSQL_PASSWORD', 'Emil110609'),
-    'database': os.getenv('MYSQL_DATABASE', 'videos.db'),
-    'autocommit': True,
-}
+ALLOWED_LANGUAGES = {"en", "he", "ru"}
 
 def get_connection():
-    """Open a connection to the MySQL database."""
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
+    """Open a connection to the PostgreSQL database."""
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        conn = psycopg2.connect(database_url)
+        conn.autocommit = True
         return conn
-    except mysql.connector.Error as err:
-        if err.errno == errorcode.ER_BAD_DB_ERROR:
-            # database does not exist, create it
-            tmp = mysql.connector.connect(
-                host=DB_CONFIG['host'],
-                port=DB_CONFIG['port'],
-                user=DB_CONFIG['user'],
-                password=DB_CONFIG['password'],
-                autocommit=True,
-            )
-            cur = tmp.cursor()
-            cur.execute(f"CREATE DATABASE `{DB_CONFIG['database']}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
-            tmp.close()
-            return mysql.connector.connect(**DB_CONFIG)
-        else:
-            raise
+
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        user=os.getenv("POSTGRES_USER", "postgres"),
+        password=os.getenv("POSTGRES_PASSWORD", ""),
+        dbname=os.getenv("POSTGRES_DB", "speech_to_text"),
+    )
+    conn.autocommit = True
+    return conn
+
+
+def _validate_lang(lang: str) -> str:
+    if lang not in ALLOWED_LANGUAGES:
+        raise ValueError(f"Unsupported language: {lang}")
+    return lang
 
 
 def init_db():
     """Initialize the database schema if it doesn't exist."""
-    logger.info("Initializing database schema")
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS videos (
-            name VARCHAR(255) PRIMARY KEY,
-            audio_file_url VARCHAR(500),
-            summary_en TEXT,
-            summary_he TEXT,
-            summary_ru TEXT,
-            transcribe_en TEXT,
-            transcribe_he TEXT,
-            transcribe_ru TEXT,
-            source_lang VARCHAR(2)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    """)
-    conn.close()
+    logger.info("Initializing PostgreSQL database schema")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS videos (
+                    name VARCHAR(255) PRIMARY KEY,
+                    audio_file_url VARCHAR(500),
+                    summary_en TEXT,
+                    summary_he TEXT,
+                    summary_ru TEXT,
+                    transcribe_en TEXT,
+                    transcribe_he TEXT,
+                    transcribe_ru TEXT,
+                    source_lang VARCHAR(8)
+                );
+                """
+            )
 
 
-def add_new_video(name: str, transcribe: str, source_lang: str, audio_url: str = None):
+def add_new_video(name: str, transcribe: str, source_lang: str, audio_url: str | None = None):
     """Add a new video to the database."""
-    conn = get_connection()
-    cur = conn.cursor()
-    column = f"transcribe_{source_lang}"
-    sql = f"INSERT IGNORE INTO videos (name, {column}, source_lang, audio_file_url) VALUES (%s, %s, %s, %s)"
-    cur.execute(sql, (name, transcribe, source_lang, audio_url))
-    conn.close()
+    lang = _validate_lang(source_lang)
+    column = f"transcribe_{lang}"
+    sql = f"""
+        INSERT INTO videos (name, {column}, source_lang, audio_file_url)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (name) DO NOTHING;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name, transcribe, lang, audio_url))
 
 
 def search_videos(keywords: str) -> list[str]:
     """Search for videos whose name, summary, or transcription contains the keywords."""
-    conn = get_connection()
-    cur = conn.cursor()
-    
-    # Split keywords and create individual patterns for better matching
-    words = keywords.lower().split()
-    pattern_conditions = []
+    words = [w.strip() for w in keywords.split() if w.strip()]
+    if not words:
+        return []
+
+    conditions = []
     params = []
-    
+
+    searchable_columns = [
+        "name",
+        "summary_en",
+        "summary_he",
+        "summary_ru",
+        "transcribe_en",
+        "transcribe_he",
+        "transcribe_ru",
+    ]
+
     for word in words:
-        word_pattern = f"%{word}%"
-        # Search in name (case insensitive)
-        pattern_conditions.append("LOWER(name) LIKE %s")
-        params.append(word_pattern)
-        
-        # Search in summaries (case insensitive)
-        pattern_conditions.append("LOWER(summary_en) LIKE %s")
-        params.append(word_pattern)
-        pattern_conditions.append("LOWER(summary_he) LIKE %s")
-        params.append(word_pattern)
-        pattern_conditions.append("LOWER(summary_ru) LIKE %s")
-        params.append(word_pattern)
-        
-        # Search in transcriptions (case insensitive)
-        pattern_conditions.append("LOWER(transcribe_en) LIKE %s")
-        params.append(word_pattern)
-        pattern_conditions.append("LOWER(transcribe_he) LIKE %s")
-        params.append(word_pattern)
-        pattern_conditions.append("LOWER(transcribe_ru) LIKE %s")
-        params.append(word_pattern)
-    
-    # Combine all conditions with OR
-    sql = f"SELECT DISTINCT name FROM videos WHERE {' OR '.join(pattern_conditions)} ORDER BY name"
-    
-    print(f"Search query: {sql}")  # Using print instead of logger
-    print(f"Search parameters: {params}")
-    
-    cur.execute(sql, params)
-    rows = cur.fetchall()
-    conn.close()
-    
+        pattern = f"%{word}%"
+        for col in searchable_columns:
+            conditions.append(f"{col} ILIKE %s")
+            params.append(pattern)
+
+    sql = f"SELECT DISTINCT name FROM videos WHERE {' OR '.join(conditions)} ORDER BY name;"
+    logger.debug("Search SQL: %s | params: %s", sql, params)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
     results = [row[0] for row in rows]
-    print(f"Search for '{keywords}' found {len(results)} videos")  # Using print instead of logger
+    logger.info("Search for '%s' found %d videos", keywords, len(results))
     return results
 
 
 def add_summary(name: str, summary: str, target_lang: str):
-    """Insert or replace a video's summary in the database."""
-    conn = get_connection()
-    cur = conn.cursor()
-    column = f"summary_{target_lang}"
-    sql = f"UPDATE videos SET {column} = %s WHERE name = %s"
-    cur.execute(sql, (summary, name))
-    conn.close()
+    """Update a video's summary in the database."""
+    lang = _validate_lang(target_lang)
+    column = f"summary_{lang}"
+    sql = f"UPDATE videos SET {column} = %s WHERE name = %s;"
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (summary, name))
 
 
 def add_transcribe(name: str, transcribe: str, target_lang: str):
-    """Insert or replace a video's transcription in the database."""
-    conn = get_connection()
-    cur = conn.cursor()
-    column = f"transcribe_{target_lang}"
-    sql = f"UPDATE videos SET {column} = %s WHERE name = %s"
-    cur.execute(sql, (transcribe, name))
-    conn.close()
+    """Update a video's transcription in the database."""
+    lang = _validate_lang(target_lang)
+    column = f"transcribe_{lang}"
+    sql = f"UPDATE videos SET {column} = %s WHERE name = %s;"
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (transcribe, name))
 
 
-def get_transcribe(video_name: str, target_lang: str) -> str:
+def get_transcribe(video_name: str, target_lang: str) -> str | None:
     """Get transcription for a video."""
-    conn = get_connection()
-    cur = conn.cursor()
-    column = f"transcribe_{target_lang}"
-    sql = f"SELECT {column} FROM videos WHERE name = %s"
-    cur.execute(sql, (video_name,))
-    row = cur.fetchone()
-    conn.close()
+    lang = _validate_lang(target_lang)
+    column = f"transcribe_{lang}"
+    sql = f"SELECT {column} FROM videos WHERE name = %s;"
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (video_name,))
+            row = cur.fetchone()
     return row[0] if row else None
 
 
-def get_summary(video_name: str, target_lang: str) -> str:
+def get_summary(video_name: str, target_lang: str) -> str | None:
     """Get summary for a video."""
-    conn = get_connection()
-    cur = conn.cursor()
-    column = f"summary_{target_lang}"
-    sql = f"SELECT {column} FROM videos WHERE name = %s"
-    cur.execute(sql, (video_name,))
-    row = cur.fetchone()
-    conn.close()
+    lang = _validate_lang(target_lang)
+    column = f"summary_{lang}"
+    sql = f"SELECT {column} FROM videos WHERE name = %s;"
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (video_name,))
+            row = cur.fetchone()
     return row[0] if row else None
 
 
 def set_source_lang(video_name: str, source: str):
     """Set source language for a video."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE videos SET source_lang = %s WHERE name = %s", (source, video_name))
-    conn.close()
+    lang = _validate_lang(source)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE videos SET source_lang = %s WHERE name = %s;", (lang, video_name))
 
 
-def get_source_lang(video_name: str) -> str:
+def get_source_lang(video_name: str) -> str | None:
     """Get source language for a video."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT source_lang FROM videos WHERE name = %s", (video_name,))
-    row = cur.fetchone()
-    conn.close()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT source_lang FROM videos WHERE name = %s;", (video_name,))
+            row = cur.fetchone()
     return row[0] if row else None
 
 
 def get_all_videos() -> list[str]:
     """Get all video names from the database."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM videos ORDER BY name")
-    rows = cur.fetchall()
-    conn.close()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM videos ORDER BY name;")
+            rows = cur.fetchall()
     return [row[0] for row in rows]
 
 
 def delete_video(video_name: str) -> bool:
     """Delete a video from the database."""
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM videos WHERE name = %s", (video_name,))
-        deleted_rows = cur.rowcount
-        conn.close()
-        logger.info(f"Deleted video '{video_name}' from database. Rows affected: {deleted_rows}")
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM videos WHERE name = %s;", (video_name,))
+                deleted_rows = cur.rowcount
+        logger.info("Deleted video '%s' from database. Rows affected: %d", video_name, deleted_rows)
         return deleted_rows > 0
     except Exception as e:
-        logger.error(f"Error deleting video '{video_name}': {e}")
+        logger.error("Error deleting video '%s': %s", video_name, e)
         return False
