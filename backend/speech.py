@@ -145,7 +145,6 @@ def init_whisper_engine(
         logger.warning("Requested Intel GPU, falling back to CPU.")
         return init_cpu(model_size)
 
-    # מצב auto: מנסה Intel GPU אם מוגדר מודל OpenVINO, אחרת CUDA אם זמין, ואז CPU
     engine = try_init_openvino(openvino_dir)
     if engine:
         return engine
