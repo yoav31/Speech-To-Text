@@ -36,6 +36,18 @@ export const handleUpload = async (
     alert(data.message);
     Set_Show_Language_Transcription_Button(true);
     Set_Show_Language_Summary_Button(true);
+
+    let fallbackBaseName = "";
+    if (file && file.name) {
+      const dotIndex = file.name.lastIndexOf(".");
+      if (dotIndex > 0) {
+        fallbackBaseName = file.name.slice(0, dotIndex);
+      } else {
+        fallbackBaseName = file.name.slice(0, file.name.length);
+      }
+    }
+
+    return data.video_name || data.filename || fallbackBaseName;
   } catch (error) {
     alert("Error uploading file: " + error);
   } finally {
