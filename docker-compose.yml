@@ -23,6 +23,8 @@ services:
       dockerfile: Dockerfile
     container_name: speech_to_text_backend
     restart: unless-stopped
+    devices:
+      - /dev/dri:/dev/dri
     env_file:
       - .env
     environment:
