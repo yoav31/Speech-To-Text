@@ -37,3 +37,7 @@ pnpm-debug.log*
 *.session.sql
 uploads/*
 !uploads/.gitkeep
+
+# Runtime audio uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
