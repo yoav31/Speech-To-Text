@@ -11,3 +11,4 @@ nltk==3.8.1
 numpy
 psycopg2-binary
 deep_translator
+openvino-genai==2026.4.1
