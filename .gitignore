@@ -37,3 +37,10 @@ pnpm-debug.log*
 *.session.sql
 uploads/*
 !uploads/.gitkeep
+
+# OpenVINO Whisper model
+backend/models/
+
+# Runtime audio uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
